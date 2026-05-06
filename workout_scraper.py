@@ -25,7 +25,7 @@ def scrape_reddit():
     data = []
     for sub in SUBREDDITS:
         print(f"Scraping r/{sub}...")
-        url = f"https://www.reddit.com/r/{sub}/hot.json?limit=25"
+        url = f"https://www.reddit.com/r/{sub}/hot.json?limit=100"
         try:
             response = requests.get(url, headers=HEADERS, verify=False)
             if response.status_code == 200:
