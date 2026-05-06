@@ -1,0 +1,28 @@
+name: Workout Trend Scraper
+
+on:
+  schedule:
+    - cron: '0 17 * * *'   # 17:00 UTC = 00:00 WIB
+  workflow_dispatch:      
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run scraper
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: python workout_scraper.py
