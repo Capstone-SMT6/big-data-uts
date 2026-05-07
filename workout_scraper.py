@@ -52,29 +52,42 @@ def scrape_pageviews():
             f"https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article"
             f"/en.wikipedia/all-access/all-agents/{article}/daily/{start_str}/{end_str}"
         )
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=15)
-            if resp.status_code == 200:
-                items = resp.json().get("items", [])
-                # Store daily views
-                results[article] = [
-                    {
-                        "date": item["timestamp"][:4] + "-" + item["timestamp"][4:6] + "-" + item["timestamp"][6:8],
-                        "views": item["views"]
-                    }
-                    for item in items
-                ]
-                points = len(items)
-                total_data_points += points
-                print(f"  [OK] {article}: {points} days")
-            else:
-                print(f"  [FAIL] {article}: HTTP {resp.status_code}")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                resp = requests.get(url, headers=HEADERS, timeout=15)
+                if resp.status_code == 200:
+                    items = resp.json().get("items", [])
+                    # Store daily views
+                    results[article] = [
+                        {
+                            "date": item["timestamp"][:4] + "-" + item["timestamp"][4:6] + "-" + item["timestamp"][6:8],
+                            "views": item["views"]
+                        }
+                        for item in items
+                    ]
+                    points = len(items)
+                    total_data_points += points
+                    print(f"  [OK] {article}: {points} days")
+                    break  # Success, exit retry loop
+                elif resp.status_code == 429:
+                    print(f"  [WAIT] {article}: HTTP 429 Too Many Requests. Waiting 5s... ({attempt+1}/{max_retries})")
+                    time.sleep(5)
+                else:
+                    print(f"  [FAIL] {article}: HTTP {resp.status_code}")
+                    results[article] = []
+                    break  # Unrecoverable error, exit retry loop
+            except Exception as e:
+                print(f"  [ERROR] {article}: {e}")
+                if attempt == max_retries - 1:
+                    results[article] = []
+                time.sleep(5)
+        else:
+            # If loop completes without break (all retries failed)
+            if not results.get(article):
                 results[article] = []
-        except Exception as e:
-            print(f"  [ERROR] {article}: {e}")
-            results[article] = []
-            
-        time.sleep(0.1)  # Be polite to Wikipedia's API
+
+        time.sleep(1.0)  # Be polite to Wikipedia's API
         
     print(f"\nTotal data points collected: {total_data_points:,}")
     return results
