@@ -1,75 +1,112 @@
 import os
+import json
+import time
 import requests
-from datetime import datetime
-from pymongo import MongoClient
+from datetime import datetime, timedelta
+from pymongo import MongoClient  # pyrefly: ignore [missing-import]
 
 # INIT
-SUBREDDITS = ["Fitness", "bodybuilding", "Gym"]
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-BASE_URL = "https://arctic-shift.photon-reddit.com/api/posts/search"
-LIMIT = 100
-MONGODB_URI = os.environ.get("MONGODB_URI", "")
+FITNESS_ARTICLES = [
+    # General Fitness & Training
+    "Bodybuilding", "Physical_fitness", "Weight_training", "Strength_training", "Aerobic_exercise",
+    "Calisthenics", "CrossFit", "High-intensity_interval_training", "Powerlifting", "Olympic_weightlifting",
+    "Gymnastics", "Yoga", "Pilates", "Martial_arts", "Running", "Cycling", "Swimming_(sport)",
+    # Equipment
+    "Dumbbell", "Barbell", "Kettlebell", "Treadmill", "Stationary_bicycle", "Rowing_machine",
+    # Nutrition & Supplements
+    "Protein_(nutrient)", "Whey_protein", "Creatine", "Branched-chain_amino_acid", "Dietary_supplement",
+    "Nutrition", "Ketogenic_diet", "Intermittent_fasting", "Veganism", "Low-carbohydrate_diet",
+    # Physiology & Biology
+    "Muscle_hypertrophy", "Weight_loss", "Metabolism", "Adipose_tissue", "Heart_rate", "VO2_max",
+    "Testosterone", "Human_growth_hormone", "Cortisol",
+    # Specific Exercises
+    "Squat_(exercise)", "Deadlift", "Bench_press", "Pull-up_(exercise)", "Push-up"
+]
+
+HEADERS = {"User-Agent": "FitnessResearchBot_BigDataProject/1.0 (academic research)"}
+MONGODB_URI = os.environ.get("MONGODB_URI")
+OUTPUT_FILE = "wiki_trends.json"
 # END INIT
 
 # DB SETUP
 def get_collection():
     client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000)
-    return client["big_data_class"]["arctic_trends"]
+    return client["big_data_class"]["wiki_trends"]
 # END DB SETUP
 
-# ARCTIC SHIFT SCRAPER
-def scrape_reddit():
-    data = []
-    for sub in SUBREDDITS:
-        print(f"Scraping r/{sub} via Arctic Shift...")
-        after = None
-        page = 0
-        while True:
-            params = {"subreddit": sub, "limit": LIMIT, "sort": "desc"}
-            if after:
-                params["before"] = after
-            try:
-                response = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=30)
-                if response.status_code == 200:
-                    posts = response.json().get("data", [])
-                    if not posts:
-                        break
-                    page += 1
-                    print(f"  Page {page}: got {len(posts)} posts")
-                    for p in posts:
-                        data.append({
-                            "post_id": p.get("id"),
-                            "subreddit": sub,
-                            "title": p.get("title"),
-                            "text": p.get("selftext", ""),
-                            "upvotes": p.get("score"),
-                            "num_comments": p.get("num_comments"),
-                            "created_utc": datetime.fromtimestamp(int(p.get("created_utc", 0)), tz=datetime.now().astimezone().tzinfo).strftime("%Y-%m-%d %H:%M:%S"),
-                            "url": p.get("url"),
-                            "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
-                    after = posts[-1].get("created_utc")
-                else:
-                    print(f"  HTTP {response.status_code} for r/{sub}")
-                    break
-            except Exception as e:
-                print(f"Error scraping r/{sub}: {e}")
-                break
-    return data
-# END ARCTIC SHIFT SCRAPER
+# WIKI SCRAPER
+def scrape_pageviews():
+    # 5 years of daily data
+    end = datetime.now()
+    start = end - timedelta(days=365 * 5)
+    start_str = start.strftime("%Y%m%d")
+    end_str = end.strftime("%Y%m%d")
+
+    results = {}
+    total_data_points = 0
+    
+    print(f"Fetching daily data from {start_str} to {end_str}...")
+
+    for article in FITNESS_ARTICLES:
+        url = (
+            f"https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article"
+            f"/en.wikipedia/all-access/all-agents/{article}/daily/{start_str}/{end_str}"
+        )
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            if resp.status_code == 200:
+                items = resp.json().get("items", [])
+                # Store daily views
+                results[article] = [
+                    {
+                        "date": item["timestamp"][:4] + "-" + item["timestamp"][4:6] + "-" + item["timestamp"][6:8],
+                        "views": item["views"]
+                    }
+                    for item in items
+                ]
+                points = len(items)
+                total_data_points += points
+                print(f"  [OK] {article}: {points} days")
+            else:
+                print(f"  [FAIL] {article}: HTTP {resp.status_code}")
+                results[article] = []
+        except Exception as e:
+            print(f"  [ERROR] {article}: {e}")
+            results[article] = []
+            
+        time.sleep(0.1)  # Be polite to Wikipedia's API
+        
+    print(f"\nTotal data points collected: {total_data_points:,}")
+    return results
+# END WIKI SCRAPER
 
 # MAIN
 def main():
-    collection = get_collection()
-    new_posts = scrape_reddit()
+    print(f"Initiating Big Data Wikipedia Scraper ({len(FITNESS_ARTICLES)} Articles)...")
+    data = scrape_pageviews()
 
-    inserted = 0
-    for post in new_posts:
-        if not collection.find_one({"post_id": post["post_id"]}):
-            collection.insert_one(post)
-            inserted += 1
+    doc = {
+        "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "articles": FITNESS_ARTICLES,
+        "data": data,
+        "metadata": {
+            "resolution": "daily",
+            "years": 5
+        }
+    }
 
-    print(f"Inserted {inserted} new posts into MongoDB (arctic_trends collection).")
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent=4)
+    print(f"Saved {os.path.getsize(OUTPUT_FILE) / (1024*1024):.2f} MB to {OUTPUT_FILE}")
+
+    if MONGODB_URI:
+        try:
+            get_collection().insert_one(doc)
+            print("Inserted into MongoDB.")
+        except Exception as e:
+            print(f"MongoDB error (data saved locally): {e}")
+    else:
+        print("No MONGODB_URI set, skipping MongoDB.")
 
 if __name__ == "__main__":
     main()
