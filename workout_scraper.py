@@ -10,7 +10,7 @@ MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb://localhost:27017/")
 DB_NAME = "big_data_class"
 COLLECTION_NAME = "workout_trends"
 SUBREDDITS = ["Fitness", "bodybuilding", "Gym"]
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+HEADERS = {"User-Agent": "workout-trend-scraper/1.0 by u/JustParadis"}
 # END INIT
 
 # DB SETUP
