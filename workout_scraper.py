@@ -52,7 +52,7 @@ def scrape_pageviews():
             f"https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article"
             f"/en.wikipedia/all-access/all-agents/{article}/daily/{start_str}/{end_str}"
         )
-        max_retries = 3
+        max_retries = 5
         for attempt in range(max_retries):
             try:
                 resp = requests.get(url, headers=HEADERS, timeout=15)
@@ -71,8 +71,8 @@ def scrape_pageviews():
                     print(f"  [OK] {article}: {points} days")
                     break  # Success, exit retry loop
                 elif resp.status_code == 429:
-                    print(f"  [WAIT] {article}: HTTP 429 Too Many Requests. Waiting 5s... ({attempt+1}/{max_retries})")
-                    time.sleep(5)
+                    print(f"  [WAIT] {article}: HTTP 429 Too Many Requests. Waiting 15s... ({attempt+1}/{max_retries})")
+                    time.sleep(15)
                 else:
                     print(f"  [FAIL] {article}: HTTP {resp.status_code}")
                     results[article] = []
@@ -81,13 +81,13 @@ def scrape_pageviews():
                 print(f"  [ERROR] {article}: {e}")
                 if attempt == max_retries - 1:
                     results[article] = []
-                time.sleep(5)
+                time.sleep(15)
         else:
             # If loop completes without break (all retries failed)
             if not results.get(article):
                 results[article] = []
 
-        time.sleep(1.0)  # Be polite to Wikipedia's API
+        time.sleep(2.0)  # Be polite to Wikipedia's API
         
     print(f"\nTotal data points collected: {total_data_points:,}")
     return results
