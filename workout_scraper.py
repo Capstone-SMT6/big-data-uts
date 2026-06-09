@@ -15,7 +15,7 @@ FITNESS_ARTICLES = [
     "Basal_metabolic_rate", "Body_mass_index", "Heart_rate"
 ]
 
-HEADERS = {"User-Agent": "FitnessResearchBot_BigDataProject/1.0 (academic research)"}
+HEADERS = {"User-Agent": "SmaFitResearchBot/1.0 (panjirafi96@gmail.com; academic research)"}
 MONGODB_URI = os.environ.get("MONGODB_URI")
 OUTPUT_FILE = "wiki_trends.json"
 
@@ -156,10 +156,26 @@ def get_indonesian_summary(article):
 
 def scrape_descriptions(articles):
     descriptions = {}
+    
+    existing_descriptions = {}
+    try:
+        with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+            old_doc = json.load(f)
+            existing_descriptions = old_doc.get("descriptions", {})
+    except Exception:
+        pass
+
     print("\nFetching article descriptions dynamically in Indonesian...")
     
-    queue = deque(articles)
-    retry_counts = {article: 0 for article in articles}
+    queue = deque()
+    for article in articles:
+        if article in existing_descriptions and existing_descriptions[article].strip():
+            descriptions[article] = existing_descriptions[article]
+            print(f"  [OK - Cached] Summary for {article} (ID)")
+        else:
+            queue.append(article)
+            
+    retry_counts = {article: 0 for article in queue}
     max_retries = 3
     
     while queue:
